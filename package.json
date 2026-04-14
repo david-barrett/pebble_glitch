@@ -1,0 +1,55 @@
+{
+    "author": "david.barrett.0@gmail.com",
+    "dependencies": {},
+    "keywords": [],
+    "name": "nin",
+    "pebble": {
+        "displayName": "NIN",
+        "enableMultiJS": true,
+        "messageKeys": [],
+        "projectType": "native",
+        "resources": {
+            "media": [
+                {
+                    "file": "images/glitch_colour.png",
+                    "memoryFormat": "8Bit",
+                    "name": "GLITCH_COLOUR",
+                    "targetPlatforms": [
+                        "basalt",
+                        "chalk",
+                        "emery",
+                        "gabbro"
+                    ],
+                    "type": "bitmap"
+                },
+                {
+                    "characterRegex": "[0-9:]",
+                    "file": "fonts/Lights in the Sky.ttf",
+                    "name": "FONT_NIN_42",
+                    "targetPlatforms": null,
+                    "type": "font"
+                },
+                {
+                    "file": "images/glitch.jpeg",
+                    "memoryFormat": "1Bit",
+                    "name": "GLITCH_BW",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                }
+            ]
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "basalt",
+            "chalk",
+            "emery",
+            "gabbro",
+            "flint"
+        ],
+        "uuid": "75e44240-2395-4b80-a2bb-f718ac4c8397",
+        "watchapp": {
+            "watchface": true
+        }
+    },
+    "version": "1.0.0"
+}
