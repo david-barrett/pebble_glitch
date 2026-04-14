@@ -5,6 +5,10 @@
   #define RESOURCE_ID_GLITCH_COLOUR RESOURCE_ID_GLITCH_BW
 #endif
 
+// Define the bottom margin once. 45px for Round, 25px for Square.
+#define DATE_MARGIN PBL_IF_ROUND_ELSE(45, 25)
+#define BATTERY_Y_OFFSET PBL_IF_ROUND_ELSE(35, 25) // Optional: adjust top margin too
+
 static Window *s_main_window;
 static TextLayer *s_time_layer, *s_date_layer;
 static GFont s_nin_font;
@@ -76,15 +80,16 @@ static void glitch_update_proc(Layer *layer, GContext *ctx) {
 
 static void glitch_timer_callback(void *data) {
   static int count = 0;
-  // SAFETY: If the window is gone, stop the timer immediately
   if (!s_main_window || !window_stack_contains_window(s_main_window)) {
-    count = 0;
-    return;
+    count = 0; return;
   }
 
   Layer *window_layer = window_get_root_layer(s_main_window);
   GRect bounds = layer_get_bounds(window_layer);
   int font_h = 90;
+  
+  // Dynamic margin based on screen shape
+  int date_margin = PBL_IF_ROUND_ELSE(35, 25);
 
   if (count < 15) { 
     s_is_glitching = !s_is_glitching; 
@@ -94,9 +99,14 @@ static void glitch_timer_callback(void *data) {
     int j_y = (rand() % 21) - 10;
 
     if(s_time_layer) layer_set_frame(text_layer_get_layer(s_time_layer), GRect(j_x, (bounds.size.h/2)-(font_h/2)+j_y, bounds.size.w, font_h));
-    if(s_battery_layer) layer_set_frame(s_battery_layer, GRect((bounds.size.w/2)-60+(j_x*2), 25+(j_y/2), 120, 25));
-    if(s_date_layer) layer_set_frame(text_layer_get_layer(s_date_layer), GRect(-j_x, (bounds.size.h-25)-(j_y/2), bounds.size.w, 20));
-
+    if(s_battery_layer) layer_set_frame(s_battery_layer, GRect((bounds.size.w/2)-60+(j_x*2), BATTERY_Y_OFFSET+(j_y/2), 120, BATTERY_Y_OFFSET));
+    
+    // Updated Jitter for Date
+    if(s_date_layer) {
+      layer_set_frame(text_layer_get_layer(s_date_layer), 
+                      GRect(-j_x, (bounds.size.h - DATE_MARGIN) - (j_y / 2), bounds.size.w, 20));
+    }
+    
     app_timer_register(50, glitch_timer_callback, NULL); 
     count++;
   } else {
@@ -106,7 +116,12 @@ static void glitch_timer_callback(void *data) {
 
     if(s_time_layer) layer_set_frame(text_layer_get_layer(s_time_layer), GRect(0, (bounds.size.h/2)-(font_h/2), bounds.size.w, font_h));
     if(s_battery_layer) layer_set_frame(s_battery_layer, GRect((bounds.size.w/2)-60, 25, 120, 25));
-    if(s_date_layer) layer_set_frame(text_layer_get_layer(s_date_layer), GRect(0, bounds.size.h-25, bounds.size.w, 20));
+    
+    // Updated Reset for Date
+    if(s_date_layer) {
+      layer_set_frame(text_layer_get_layer(s_date_layer), 
+                      GRect(0, bounds.size.h - DATE_MARGIN, bounds.size.w, 20));
+    }
   }
   layer_mark_dirty(window_layer);
 }
@@ -133,12 +148,12 @@ static void main_window_load(Window *window) {
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 
   // 3. Battery
-  s_battery_layer = layer_create(GRect((bounds.size.w/2)-60, 25, 120, 25));
+  s_battery_layer = layer_create(GRect((bounds.size.w/2)-60, BATTERY_Y_OFFSET, 120, BATTERY_Y_OFFSET));
   layer_set_update_proc(s_battery_layer, battery_update_proc);
   layer_add_child(window_layer, s_battery_layer);
 
   // 4. Date
-  s_date_layer = text_layer_create(GRect(0, bounds.size.h-25, bounds.size.w, 20));
+  s_date_layer = text_layer_create(GRect(0, bounds.size.h - DATE_MARGIN, bounds.size.w, 20));
   text_layer_set_background_color(s_date_layer, GColorClear);
   text_layer_set_text_color(s_date_layer, GColorCyan);
   text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
