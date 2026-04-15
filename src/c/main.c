@@ -19,6 +19,25 @@ static bool s_is_glitching = false;
 static bool s_show_error = false;
 static int s_battery_level;
 static char s_date_buffer[32];
+static bool s_is_sleeping = false;
+
+static bool is_user_asleep() {
+  #if defined(PBL_HEALTH)
+    // Check the last 10 minutes of activity
+    time_t end = time(NULL);
+    time_t start = end - (SECONDS_PER_MINUTE * 10);
+
+    // Get the most recent activity type
+    HealthActivityMask activity = health_service_peek_current_activities();
+    
+    // If Pebble Health thinks you are sleeping, return true
+    if (activity & HealthActivitySleep || activity & HealthActivityRestfulSleep) {
+      return true;
+    }
+  #endif
+  return false;
+  return true;
+}
 
 static void update_time() {
   time_t temp = time(NULL);
@@ -35,7 +54,10 @@ static void update_time() {
 
 static void battery_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
-  graphics_context_set_text_color(ctx, GColorCyan);
+  
+  // Choose color: Cyan for awake, Dark Gray for sleep (better contrast on orange)
+  GColor ui_color = s_is_sleeping ? GColorDarkGray : GColorCyan;
+  graphics_context_set_text_color(ctx, ui_color);
 
   if (s_is_glitching && s_show_error) {
     graphics_draw_text(ctx, "SIGNAL LOSS", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), 
@@ -50,13 +72,20 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
 
   int x_offset = 62;
   for (int i = 0; i < 5; i++) {
-    graphics_context_set_fill_color(ctx, (s_battery_level >= (i + 1) * 20) ? GColorCyan : GColorDarkCandyAppleRed);
+    // Bars also respect the sleep color
+    graphics_context_set_fill_color(ctx, (s_battery_level >= (i + 1) * 20) ? ui_color : GColorBlack);
     graphics_fill_rect(ctx, GRect(x_offset + (i * 5), 4, 3, 10), 0, GCornerNone);
   }
 
-  snprintf(s_batt_buffer, sizeof(s_batt_buffer), " ] %d%%", s_battery_level);
+  // Change percentage to "STDBY" if sleeping to make it look like a system state
+  if (s_is_sleeping) {
+    snprintf(s_batt_buffer, sizeof(s_batt_buffer), " ] STDBY");
+  } else {
+    snprintf(s_batt_buffer, sizeof(s_batt_buffer), " ] %d%%", s_battery_level);
+  }
+
   graphics_draw_text(ctx, s_batt_buffer, fonts_get_system_font(FONT_KEY_GOTHIC_14), 
-                     GRect(x_offset + 25, 0, 50, 20), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+                     GRect(x_offset + 25, 0, 60, 20), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
 }
 
 static void battery_callback(BatteryChargeState state) {
@@ -87,9 +116,6 @@ static void glitch_timer_callback(void *data) {
   Layer *window_layer = window_get_root_layer(s_main_window);
   GRect bounds = layer_get_bounds(window_layer);
   int font_h = 90;
-  
-  // Dynamic margin based on screen shape
-  int date_margin = PBL_IF_ROUND_ELSE(35, 25);
 
   if (count < 15) { 
     s_is_glitching = !s_is_glitching; 
@@ -99,7 +125,7 @@ static void glitch_timer_callback(void *data) {
     int j_y = (rand() % 21) - 10;
 
     if(s_time_layer) layer_set_frame(text_layer_get_layer(s_time_layer), GRect(j_x, (bounds.size.h/2)-(font_h/2)+j_y, bounds.size.w, font_h));
-    if(s_battery_layer) layer_set_frame(s_battery_layer, GRect((bounds.size.w/2)-60+(j_x*2), BATTERY_Y_OFFSET+(j_y/2), 120, BATTERY_Y_OFFSET));
+    if(s_battery_layer) layer_set_frame(s_battery_layer, GRect((bounds.size.w/2)-60+(j_x*2), BATTERY_Y_OFFSET+(j_y/2), 120, 25));
     
     // Updated Jitter for Date
     if(s_date_layer) {
@@ -115,7 +141,7 @@ static void glitch_timer_callback(void *data) {
     count = 0;
 
     if(s_time_layer) layer_set_frame(text_layer_get_layer(s_time_layer), GRect(0, (bounds.size.h/2)-(font_h/2), bounds.size.w, font_h));
-    if(s_battery_layer) layer_set_frame(s_battery_layer, GRect((bounds.size.w/2)-60, 25, 120, 25));
+    if(s_battery_layer) layer_set_frame(s_battery_layer, GRect((bounds.size.w/2)-60, BATTERY_Y_OFFSET, 120, 25));
     
     // Updated Reset for Date
     if(s_date_layer) {
@@ -142,20 +168,22 @@ static void main_window_load(Window *window) {
   s_nin_font = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_NIN_42));
   s_time_layer = text_layer_create(GRect(0, (bounds.size.h/2)-45, bounds.size.w, 90));
   text_layer_set_background_color(s_time_layer, GColorClear);
-  text_layer_set_text_color(s_time_layer, GColorWhite);
+  // CHANGE: Check sleep state here
+  text_layer_set_text_color(s_time_layer, s_is_sleeping ? GColorLightGray : GColorWhite);
   text_layer_set_font(s_time_layer, s_nin_font);
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
-
-  // 3. Battery
-  s_battery_layer = layer_create(GRect((bounds.size.w/2)-60, BATTERY_Y_OFFSET, 120, BATTERY_Y_OFFSET));
+  
+  // 3. Battery (FIXED HEIGHT TO 25)
+  s_battery_layer = layer_create(GRect((bounds.size.w/2)-60, BATTERY_Y_OFFSET, 120, 25));
   layer_set_update_proc(s_battery_layer, battery_update_proc);
   layer_add_child(window_layer, s_battery_layer);
-
+  
   // 4. Date
   s_date_layer = text_layer_create(GRect(0, bounds.size.h - DATE_MARGIN, bounds.size.w, 20));
   text_layer_set_background_color(s_date_layer, GColorClear);
-  text_layer_set_text_color(s_date_layer, GColorCyan);
+  // CHANGE: Check sleep state here
+  text_layer_set_text_color(s_date_layer, s_is_sleeping ? GColorDarkGray : GColorCyan);
   text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
@@ -178,11 +206,23 @@ static void main_window_unload(Window *window) {
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time();
-  app_timer_register(10, glitch_timer_callback, NULL);
-}
+  
+  bool now_sleeping = is_user_asleep();
+  
+  if (now_sleeping != s_is_sleeping) {
+    s_is_sleeping = now_sleeping;
+    text_layer_set_text_color(s_date_layer, s_is_sleeping ? GColorDarkGray : GColorCyan);
+    text_layer_set_text_color(s_time_layer, s_is_sleeping ? GColorLightGray : GColorWhite);
+    layer_mark_dirty(window_get_root_layer(s_main_window));
+  }
 
+  if (!s_is_sleeping) {
+    app_timer_register(10, glitch_timer_callback, NULL);
+  }
+}
 static void init() {
   s_main_window = window_create();
+//   s_is_sleeping = true;
   window_set_background_color(s_main_window, GColorBlack);
   window_set_window_handlers(s_main_window, (WindowHandlers) {
     .load = main_window_load, .unload = main_window_unload
